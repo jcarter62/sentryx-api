@@ -1,5 +1,5 @@
 import dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from dotenv import load_dotenv
 import os
 import requests
@@ -7,7 +7,12 @@ import json
 
 load_dotenv()
 
-app = FastAPI()
+__title__ = os.getenv('TITLE', 'API')
+__contact_name__ = os.getenv('CONTACT_NAME', 'John Doe')
+__contact_email__ = os.getenv('CONTACT_EMAIL', 'jd@go.com')
+app = FastAPI(title=__title__,
+              contact={"name": __contact_name__, "email": __contact_email__},
+              version="1.0")
 
 @app.get("/api/read/deviceid/{device_id}")
 async def read_device(device_id: str):
@@ -68,7 +73,7 @@ def build_url_socketid(socket_id:str) -> str :
     return url
 
 @app.get("/")
-async def root():
-    return {"message": ""}
-
+async def root(req: Request):
+    docs_url = req.base_url.__str__() + "docs"
+    return {"message": "", "docs_url": docs_url}
 
