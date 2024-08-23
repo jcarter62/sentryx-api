@@ -1,4 +1,3 @@
-import dotenv
 from fastapi import FastAPI, Request
 from dotenv import load_dotenv
 import os
@@ -22,6 +21,43 @@ async def read_device(device_id: str):
     response = requests.get(url, headers=headers, data=payload)
     formatted_json = reformat_json(response.text)
     return {"data": formatted_json}
+
+@app.get("/api/read/socketid/{socket_id}")
+async def read_socket(socket_id: str):
+    url = build_url_socketid(socket_id)
+    headers = build_headers()
+    payload = {}
+    response = requests.get(url, headers=headers, data=payload)
+    formatted_json = reformat_json(response.text)
+
+    return {"data": formatted_json}
+
+@app.get("/api/last-reading/{socket_id}")
+async def last_reading(socket_id: str):
+    url = build_url_socketid(socket_id)
+    headers = build_headers()
+    payload = {}
+    response = requests.get(url, headers=headers, data=payload)
+    if response.status_code != 200:
+        rslt = {
+            'device_id': '',
+            'turnout_id': socket_id,
+            'reading': 0,
+            'timestamp': ''
+        }
+        msg = "Socket ID not found"
+        code = response.status_code
+    else:
+        data = json.loads(response.text)
+        rslt = {
+            'device_id': data['deviceId'],
+            'turnout_id': data['socketId'],
+            'reading': data['lastReading'],
+            'timestamp': data['lastReadingDateTime']
+        }
+        msg = "Success"
+        code = 200
+    return {"data": rslt, "message": msg}, code
 
 def build_url_deviceid(id:str) -> str :
     from datetime import datetime, timedelta
@@ -48,16 +84,6 @@ def reformat_json(json_data: str) -> str:
     formatted_data = json.dumps(data, indent=4)
     return formatted_data
 
-@app.get("/api/read/socketid/{socket_id}")
-async def read_socket(socket_id: str):
-    url = build_url_socketid(socket_id)
-    headers = build_headers()
-    payload = {}
-    response = requests.get(url, headers=headers, data=payload)
-    formatted_json = reformat_json(response.text)
-
-    return {"data": formatted_json}
-
 def build_url_socketid(socket_id:str) -> str :
     # does not work since socket id is not a parameter in the API
     from datetime import datetime, timedelta
@@ -66,11 +92,15 @@ def build_url_socketid(socket_id:str) -> str :
     datefrom = yesterday.strftime('%Y-%m-%dT00:00:00.000Z')
     dateto = today.strftime('%Y-%m-%dT00:00:00.000Z')
 
-    url = os.getenv('APIURL') + os.getenv('COMPANYID') + '/sockets/report'
-    url = url + f"?socketid={socket_id}&Parameters=Consumption&Parameters=Reading&"
-    url = url + f"DateInterval=Daily&"
-    url = url + f"startDate={datefrom}&endDate={dateto}"
+    url = os.getenv('APIURL') + os.getenv('COMPANYID')
+#    url = url + f"/sockets/{socket_id}/consumption?Parameters=Reading&"
+    url = url + f"/sockets/{socket_id}"
+#    url = url + f"DateInterval=Daily&"
+#    url = url + f"startDate={datefrom}&endDate={dateto}"
     return url
+
+
+
 
 @app.get("/")
 async def root(req: Request):
