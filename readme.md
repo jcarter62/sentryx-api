@@ -42,6 +42,19 @@ APIURL=https://api.sentryx.io/v1-wm/sites/
 COMPANYID=sentryx-company-id-here
 USERNAME=userid@domain.com
 APIKEY=put-your-api-key-here
+
+TITLE=Sentryx API
+CONTACT_NAME=John Doe
+CONTACT_EMAIL=jd@go.com
+
+SQLSERVER=sql-svr
+INSTANCE=sql-instance
+DATABASE=sql-db
+UID=sql-user
+PASSWORD=sql-password
+
+AMI_CODE=TC0041
+
 ```
 There is a sample.env file available as a template in the project.
 

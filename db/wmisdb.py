@@ -70,6 +70,7 @@ class WMISDB:
         con_str += 'UID=' + self._username + ';'
         con_str += 'PWD=' + self._password + ';'
         con_str += 'PORT=1433;ENCRYPT=NO;'
+        con_str += 'MARS_Connection=Yes;'
         return con_str
 
     def __del__(self):

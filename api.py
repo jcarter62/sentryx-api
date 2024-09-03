@@ -5,19 +5,23 @@ import requests
 import json
 from db import Data
 from datetime import datetime
-from utils import build_url_deviceid, build_headers, reformat_json, build_url_socketid, load_and_save_last_reading
+from utils import Utils
+import threading
+from db import WMISDB, DBError
 
 router = APIRouter(prefix="/api")
 
+
 @router.get("/read/deviceid/{device_id}")
 async def read_device(device_id: str):
-    url = build_url_deviceid(device_id)
-    headers = build_headers()
+    u = Utils()
+    url = u.build_url_deviceid(device_id)
+    headers = u.build_headers()
     payload = {}
     response = requests.get(url, headers=headers, data=payload)
 
     if response.status_code == 200:
-        formatted_json = reformat_json(response.text)
+        formatted_json = u.reformat_json(response.text)
         return {"data": formatted_json}
     else:
         raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -25,12 +29,13 @@ async def read_device(device_id: str):
 
 @router.get("/read/socketid/{socket_id}")
 async def read_socket(socket_id: str):
-    url = build_url_socketid(socket_id)
-    headers = build_headers()
+    u = Utils()
+    url = u.build_url_socketid(socket_id)
+    headers = u.build_headers()
     payload = {}
     response = requests.get(url, headers=headers, data=payload)
     if response.status_code == 200:
-        formatted_json = reformat_json(response.text)
+        formatted_json = u.reformat_json(response.text)
         return {"data": formatted_json}
     else:
         raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -38,8 +43,9 @@ async def read_socket(socket_id: str):
 
 @router.get("/save-last-reading/{socket_id}", status_code=201)
 async def save_last_reading(socket_id: str) -> dict:
-    url = build_url_socketid(socket_id)
-    headers = build_headers()
+    u = Utils()
+    url = u.build_url_socketid(socket_id)
+    headers = u.build_headers()
     payload = {}
     response = requests.get(url, headers=headers, data=payload)
     code = response.status_code
@@ -49,7 +55,11 @@ async def save_last_reading(socket_id: str) -> dict:
         meter_id = data['socketId']
         reading = data['lastReading']
         reading_date = data['lastReadingDateTime']
+
         rslt, code = db.insert_reading(meter_id=meter_id, reading_date=reading_date, reading=reading)
+        datarslt, datacode = db.insert_ami_data(meter_id=meter_id, reading_date=reading_date, reading=reading,
+                                                data=data)
+
         if rslt == "Ok":
             msg = "Success"
         else:
@@ -61,10 +71,12 @@ async def save_last_reading(socket_id: str) -> dict:
         else:
             return {"detail": msg}
 
+
 @router.get("/last-reading/{socket_id}")
 async def last_reading(socket_id: str):
-    url = build_url_socketid(socket_id)
-    headers = build_headers()
+    u = Utils()
+    url = u.build_url_socketid(socket_id)
+    headers = u.build_headers()
     payload = {}
     response = requests.get(url, headers=headers, data=payload)
     if response.status_code != 200:
@@ -92,6 +104,7 @@ async def last_reading(socket_id: str):
     else:
         raise HTTPException(status_code=code, detail=msg)
 
+
 @router.get("/meter-list")
 async def meter_list():
     db = Data()
@@ -102,9 +115,65 @@ async def meter_list():
 
 @router.get("/save-last-readings/all")
 async def save_last_readings(request: Request):
+    cmdlist = []
+    semaphore = threading.Semaphore(10)
+    cmdlist_lock = threading.Lock()
+
     db = Data()
     lst = db.ami_meter_list()
+    # # modify lst to contain the first 10 items
+    # lst = lst[:20]
     db = None
 
+
+    def worker(socket_id):
+        with semaphore:
+            cmd = Utils().load_and_save_last_reading(socket_id=socket_id)
+            with cmdlist_lock:
+                cmdlist.append(cmd)
+                print(f'Processed {socket_id}', end='\r')
+
+    threads = []
     for item in lst:
-        load_and_save_last_reading(socket_id=item['meter_id'])
+        t = threading.Thread(target=worker, args=(item['meter_id'],))
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    print('done processing all readings')
+
+    cmds = []
+    for c in cmdlist:
+        if c is not None:
+            for item in c:
+                if item['cmd'] > '':
+                    cmds.append(item)
+
+
+    # now process the inserts
+    wmisdb = WMISDB()
+    conn = wmisdb.connection
+    cursor = conn.cursor()
+    conn.autocommit = False
+
+    inserted = 0
+    errors = 0
+    for item in cmds:
+        try:
+            if item['cmd'] > '':
+                cursor.execute(item['cmd'])
+                inserted += 1
+        except DBError as err:
+            print(f"DBError: {err}\r{item['cmd']}")
+            errors += 1
+        except Exception as err:
+            print(f"Error: {err}\r{item['cmd']}")
+            errors += 1
+
+
+    conn.commit()
+    wmisdb = None
+    msg = f'Inserted {inserted} records with {errors} errors'
+    return {"message": msg}

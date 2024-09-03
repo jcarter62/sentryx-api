@@ -1,4 +1,7 @@
+import datetime
 import os.path
+import uuid
+import json
 from .wmisdb import WMISDB, DBError
 from dotenv import load_dotenv
 import os
@@ -7,13 +10,15 @@ load_dotenv()
 
 class Data:
     def __init__(self):
-        if not self.__table_exists__():
-            self.__create_table__()
+        if not self.__table_ami_readings_exists__():
+            self.__create_ami_readings__()
+        if not self.__table_ami_data_exists__():
+            self.__create_ami_data__()
 
     # table name: ami_readings, columns
     # meter_id, reading_date, reading_time, reading_value, reading_type, reading_status, reading_unit, reading_source
 
-    def __table_exists__(self) -> bool:
+    def __table_ami_readings_exists__(self) -> bool:
         rslt = False
         try:
             wmisdb = WMISDB()
@@ -35,7 +40,7 @@ class Data:
             rslt = False
         return rslt
 
-    def __create_table__(self) -> bool:
+    def __create_ami_readings__(self) -> bool:
         rslt = False
         try:
             wmisdb = WMISDB()
@@ -57,9 +62,94 @@ class Data:
             rslt = False
         return rslt
 
+    def __table_ami_data_exists__(self) -> bool:
+        rslt = False
+        try:
+            wmisdb = WMISDB()
+            conn = wmisdb.connection
+            cursor = conn.cursor()
+            cmd = 'select count(*) from information_schema.tables where table_name = \'ami_data\';'
+            cursor.execute(cmd)
+            rows = cursor.fetchall()
+            if rows[0][0] == 1:
+                rslt = True
+            else:
+                rslt = False
+            wmisdb = None
+        except DBError as err:
+            print(f'Error in determine_if_table_exists {err}')
+            rslt = False
+        except Exception as err:
+            print(f'Unexpected Error: {err}')
+            rslt = False
+        return rslt
+
+    def __create_ami_data__(self) -> bool:
+        rslt = False
+        try:
+            wmisdb = WMISDB()
+            conn = wmisdb.connection
+            cursor = conn.cursor()
+            # open create_ami_readings.sql and read the contents into cmd
+            sql_file = os.path.join(os.path.dirname(os.path.abspath(__file__)),'create_ami_data.sql')
+            with open(sql_file, 'r') as file:
+                cmd = file.read()
+            cursor.execute(cmd)
+            conn.commit()
+            wmisdb = None
+            rslt = True
+        except DBError as err:
+            print(f'Error in create_table {err}')
+            rslt = False
+        except Exception as err:
+            print(f'Unexpected Error: {err}')
+            rslt = False
+        return rslt
+
+    def insert_ami_data(self, meter_id: str, reading_date: str, reading: float, data: str) -> tuple[str, int, str]:
+        rslt = False
+        cmd = ''
+        try:
+            wmisdb = WMISDB()
+            conn = wmisdb.connection
+            cursor = conn.cursor()
+            # calculate lowercase uuid
+            new_id = str(uuid.uuid4()).lower().replace('-', '')
+            # sanitize data
+            # how do I convert data to a string?
+
+            datastr = json.dumps(data)
+            while chr(39) in datastr:
+                datastr = datastr.replace(chr(39),chr(94))
+
+            # determine if reading_date is a valid date
+            try:
+                __test_date__ = datetime.datetime.fromisoformat(reading_date)
+            except Exception as err:
+                reading_date = ''
+
+            cmd = f'insert into ami_data (id, meter_id, reading_dt, reading, tstamp, data ) ' + \
+                  f'values (\'{new_id}\', \'{meter_id}\', \'{reading_date}\', {reading}, ' + \
+                  f'getdate(), \'{datastr}\');'
+
+            wmisdb = None
+            rslt = "Ok"
+            code = 201
+        except DBError as err:
+            rslt = f'Error in insert_reading {err}'
+            code = 500
+        except Exception as err:
+            rslt = f'Unexpected Error: {err}'
+            code = 500
+
+        return rslt, code, cmd
+
+
     def insert_reading(self, meter_id: str, reading_date: str, reading: float,
-                       rd_type: str = '', rd_status: str = '', rd_unit: str = '', rd_source: str = '') -> tuple[str, int]:
+                       rd_type: str = '', rd_status: str = '', rd_unit: str = '', rd_source: str = ''
+                       ) -> tuple[str, int, str]:
         rslt = ''
+        cmd = ''
         try:
             wmisdb = WMISDB()
             conn = wmisdb.connection
@@ -71,23 +161,22 @@ class Data:
             if rows[0][0] > 0:
                 rslt = "Reading already exists"
                 code = 208
+                cmd = ''
             else:
                 cmd = f'insert into ami_readings (meter_id, reading_dt, reading, rd_type, rd_status, rd_unit, rd_source) ' + \
                       f'values (\'{meter_id}\', \'{reading_date}\', {reading}, ' + \
                       f' \'{rd_type}\', \'{rd_status}\', \'{rd_unit}\', \'{rd_source}\' );'
-                cursor.execute(cmd)
-                conn.commit()
+
                 wmisdb = None
                 rslt = "Ok"
                 code = 201
-
         except DBError as err:
             rslt = f'Error in insert_reading {err}'
             code = 500
         except Exception as err:
             rslt = f'Unexpected Error: {err}'
             code = 500
-        return rslt, code
+        return rslt, code, cmd
 
     def find_reading(self, meter_id: str, reading_date: str) -> dict:
         rslt = {}
