@@ -231,4 +231,129 @@ class Data:
             print(f'Unexpected Error: {err}')
         return lst
 
+    def last_wmis_reading(self, meter_id:str )-> dict:
+        rslt = {}
+        try:
+            wmisdb = WMISDB()
+            conn = wmisdb.connection
+            cursor = conn.cursor()
+            cmd = f'select top 1 turnout_id as meter_id, reading, readingdate  from TRNDEMST where turnout_id = ? ' + \
+                    'order by readingdate desc;'
 
+            cursor.execute(cmd, (meter_id,))
+            rows = cursor.fetchall()
+            try:
+                if len(rows) > 0:
+                    row = rows[0]
+                    rslt = {
+                        'meter_id':row[0],
+                        'reading':row[1],
+                        'reading_date':row[2],
+                    }
+                else:
+                    rslt = {}
+            except Exception as err:
+                rslt = {}
+            finally:
+                wmisdb = None
+        except DBError as err:
+            print(f'Error in find_reading {err}')
+            rslt = {}
+        except Exception as err:
+            print(f'Unexpected Error: {err}')
+            rslt = {}
+        return rslt
+
+
+    def sp_ami_readings(self, target_date:str = '')-> []:
+        rslt = []
+        try:
+            wmisdb = WMISDB()
+            conn = wmisdb.connection
+            cursor = conn.cursor()
+            if target_date <= '':
+                cmd = 'exec sp_ami_readings;'
+            else:
+                cmd = f'exec sp_ami_readings @targetdate=\'{target_date}\';'
+
+            cursor.execute(cmd)
+            rows = cursor.fetchall()
+            try:
+                if len(rows) > 0:
+                    for row in rows:
+                        rslt.append({
+                            'meter_id':row[0],
+                            'readingdate':row[1],
+                            'reading':row[2],
+                            'readingstatus':row[3],
+                            'daysold':row[4],
+                            'rec_action':row[5],
+                            'lastreadingdate':row[6],
+                            'lastreading':row[7],
+                        })
+                else:
+                    rslt = []
+            except Exception as err:
+                rslt = []
+            finally:
+                wmisdb = None
+        except DBError as err:
+            print(f'DB Error {err}')
+        except Exception as err:
+            print(f'Unexpected Error: {err}')
+        return rslt
+        # note: GRANT EXECUTE ON [dbo].[sp_ami_readings] TO [api]
+
+
+    def post_reading(self, meter_id:str, reading_date:str, reading:str, operator:str)-> dict:
+        rslt = {}
+        try:
+            wmisdb = WMISDB()
+            conn = wmisdb.connection
+            cursor = conn.cursor()
+
+            versionstr = '51.2017'
+            current_datetime = datetime.datetime.now().isoformat()
+
+
+            cmd = 'insert into ' + \
+                  '  TabletIncomingMeterReadings51( ' + \
+                  '      [VersionString], [MeterType], [Meter_ID], [ReadingDate], ' + \
+                  '      [TabletOperator], [Tablet_ID], [Time_Stamp], [Odometer], ' + \
+                  '      [ObservedFlow], [Notes], [Geographic], [ReadingFileName]) ' + \
+                  '  values( ' + \
+                  f'      \'{versionstr}\', \'Turnout\', \'{meter_id}\', \'{reading_date}\', ' + \
+                  f'      \'{operator}\', \'ami-ui\', getdate(), {reading}, ' + \
+                  '      0, \'\', \'\', \'\'); '
+
+            cursor.execute(cmd)
+            conn.commit()
+
+            wmisdb = None
+            rslt = {'message':'Ok','code':200}
+        except DBError as err:
+            rslt = {'message':f'Error: {err}', 'code':500}
+        except Exception as err:
+            rslt = {'message':f'Error: {err}', 'code':500}
+        return rslt
+        #
+
+    def process_readings(self)-> dict:
+        rslt = {}
+        try:
+            wmisdb = WMISDB()
+            conn = wmisdb.connection
+            cursor = conn.cursor()
+
+            cmd = 'exec sp_mi_process;'
+            cursor.execute(cmd)
+            conn.commit()
+
+            wmisdb = None
+            rslt = {'message':'Ok','code':200}
+        except DBError as err:
+            rslt = {'message':f'Error: {err}', 'code':500}
+        except Exception as err:
+            rslt = {'message':f'Error: {err}', 'code':500}
+        return rslt
+        #

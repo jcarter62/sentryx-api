@@ -177,3 +177,40 @@ async def save_last_readings(request: Request):
     wmisdb = None
     msg = f'Inserted {inserted} records with {errors} errors'
     return {"message": msg}
+
+
+@router.get("/last-wmis-reading/{socket_id}")
+async def last_wmis_reading(socket_id: str):
+    db = Data()
+
+    data = db.last_wmis_reading(meter_id=socket_id)
+    db = None
+    return {"data": data}, 200
+
+@router.get("/sp_ami_readings")
+async def get_sp_ami_readings():
+    db = Data()
+    data = db.sp_ami_readings()
+    db = None
+    return {"data": data}, 200
+
+@router.get("/sp_ami_readings/{targetdate}")
+async def get_sp_ami_readings_w_target(targetdate: str):
+    db = Data()
+    data = db.sp_ami_readings(target_date=targetdate)
+    db = None
+    return {"data": data}, 200
+
+@router.post("/post-reading/{meter_id}/{reading_date}/{reading}/{operator}")
+async def post_reading(meter_id: str, reading_date: str, reading: str, operator: str):
+    db = Data()
+    data = db.post_reading(meter_id=meter_id, reading_date=reading_date, reading=reading, operator=operator)
+    db = None
+    return {"data": data['message']}, data['code']
+
+@router.post("/process-readings")
+async def process_readings():
+    db = Data()
+    data = db.process_readings()
+    db = None
+    return {"data": data['message']}, data['code']
