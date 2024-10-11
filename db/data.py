@@ -312,25 +312,37 @@ class Data:
             conn = wmisdb.connection
             cursor = conn.cursor()
 
-            versionstr = '51.2017'
-            current_datetime = datetime.datetime.now().isoformat()
+            chk_cmd = 'select isnull(count(*),0) from TabletIncomingMeterReadings51 ' + \
+                     f'where (Meter_ID = \'{meter_id}\') and ' + \
+                     f'(ReadingDate = \'{reading_date}\') and ' + \
+                     f'(round(Odometer,2) = round({reading},2)); '
 
+            cursor.execute(chk_cmd)
+            rows = cursor.fetchall()
+            nrows = 0
+            if rows[0][0] > 0:
+                nrows = rows[0][0]
+            if nrows > 0:
+                rslt = {'message':'Duplicate','code':208}
+            else:
+                versionstr = '51.2017'
+                current_datetime = datetime.datetime.now().isoformat()
 
-            cmd = 'insert into ' + \
-                  '  TabletIncomingMeterReadings51( ' + \
-                  '      [VersionString], [MeterType], [Meter_ID], [ReadingDate], ' + \
-                  '      [TabletOperator], [Tablet_ID], [Time_Stamp], [Odometer], ' + \
-                  '      [ObservedFlow], [Notes], [Geographic], [ReadingFileName]) ' + \
-                  '  values( ' + \
-                  f'      \'{versionstr}\', \'Turnout\', \'{meter_id}\', \'{reading_date}\', ' + \
-                  f'      \'{operator}\', \'ami-ui\', getdate(), {reading}, ' + \
-                  '      0, \'\', \'\', \'\'); '
+                cmd = 'insert into ' + \
+                      '  TabletIncomingMeterReadings51( ' + \
+                      '      [VersionString], [MeterType], [Meter_ID], [ReadingDate], ' + \
+                      '      [TabletOperator], [Tablet_ID], [Time_Stamp], [Odometer], ' + \
+                      '      [ObservedFlow], [Notes], [Geographic], [ReadingFileName]) ' + \
+                      '  values( ' + \
+                      f'      \'{versionstr}\', \'Turnout\', \'{meter_id}\', \'{reading_date}\', ' + \
+                      f'      \'{operator}\', \'ami-ui\', getdate(), {reading}, ' + \
+                      '      0, \'\', \'\', \'\'); '
 
-            cursor.execute(cmd)
-            conn.commit()
+                cursor.execute(cmd)
+                conn.commit()
 
-            wmisdb = None
-            rslt = {'message':'Ok','code':200}
+                wmisdb = None
+                rslt = {'message':'Ok','code':200}
         except DBError as err:
             rslt = {'message':f'Error: {err}', 'code':500}
         except Exception as err:
