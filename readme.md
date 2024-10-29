@@ -1,7 +1,7 @@
 # sentryx-api 
 
 ## Description
-This project provides a python fastapi interface to access data from sentryyx.io.
+This project provides a python fastapi interface to access data from sentryx.io.
 
 ## Prerequisites
 - Python 3.x
